@@ -5,13 +5,17 @@ import Logout from "./Logout";
 import axios from "axios";
 import { sendMessageRoute, recieveMessageRoute } from "../utils/APIRoutes";
 import { VariableSizeList as List } from "react-window";
-import { prepare, layout } from "@chenglou/pretext";
 
-const FONT_SPEC = "16px 'Josefin Sans', sans-serif";
-const LINE_HEIGHT = 22; // Matches font-size: 1rem (16px) with typical leading
+const LINE_HEIGHT = 22;
 const BUBBLE_PADDING_VERTICAL = 32; // 1rem top + 1rem bottom
-const BUBBLE_PADDING_HORIZONTAL = 32; // 1rem left + 1rem right
-const VERTICAL_GAP = 12; // Consistent gap between bubbles
+const VERTICAL_GAP = 8;
+
+function estimateHeight(message, containerWidth) {
+  if (!message || containerWidth === 0) return 60;
+  const charsPerLine = Math.floor((containerWidth * 0.45) / 8);
+  const lines = Math.ceil(String(message).length / (charsPerLine || 50));
+  return Math.max(1, lines) * LINE_HEIGHT + BUBBLE_PADDING_VERTICAL + VERTICAL_GAP;
+}
 
 export default function ChatContainer({ currentChat, socket }) {
   const [messages, setMessages] = useState([]);
@@ -39,11 +43,7 @@ export default function ChatContainer({ currentChat, socket }) {
         from: data._id,
         to: currentChat._id,
       });
-      const preparedMessages = response.data.map((msg) => ({
-        ...msg,
-        handle: prepare(String(msg.message), FONT_SPEC),
-      }));
-      setMessages(preparedMessages);
+      setMessages(response.data);
     };
     getMessages();
   }, [currentChat]);
@@ -57,13 +57,7 @@ export default function ChatContainer({ currentChat, socket }) {
   }, [socket]);
 
   useEffect(() => {
-    if (arrivalMessage) {
-      const prepared = {
-        ...arrivalMessage,
-        handle: prepare(String(arrivalMessage.message), FONT_SPEC),
-      };
-      setMessages((prev) => [...prev, prepared]);
-    }
+    if (arrivalMessage) setMessages((prev) => [...prev, arrivalMessage]);
   }, [arrivalMessage]);
 
   useEffect(() => {
@@ -73,14 +67,7 @@ export default function ChatContainer({ currentChat, socket }) {
   }, [messages]);
 
   const getItemSize = useCallback(
-    (index) => {
-      const msg = messages[index];
-      if (!msg || containerWidth === 0) return 60;
-      
-      const maxWidth = containerWidth * 0.5 - BUBBLE_PADDING_HORIZONTAL;
-      const { height } = layout(msg.handle, maxWidth, LINE_HEIGHT);
-      return height + BUBBLE_PADDING_VERTICAL + VERTICAL_GAP;
-    },
+    (index) => estimateHeight(messages[index]?.message, containerWidth),
     [messages, containerWidth]
   );
 
@@ -88,12 +75,7 @@ export default function ChatContainer({ currentChat, socket }) {
     const data = JSON.parse(localStorage.getItem(process.env.REACT_APP_LOCALHOST_KEY));
     socket.current.emit("send-msg", { to: currentChat._id, from: data._id, msg });
     await axios.post(sendMessageRoute, { from: data._id, to: currentChat._id, message: msg });
-    const prepared = {
-      fromSelf: true,
-      message: msg,
-      handle: prepare(String(msg), FONT_SPEC),
-    };
-    setMessages((prev) => [...prev, prepared]);
+    setMessages((prev) => [...prev, { fromSelf: true, message: msg }]);
   };
 
   return (
