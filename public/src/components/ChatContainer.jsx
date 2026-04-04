@@ -1,22 +1,47 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import styled from "styled-components";
 import ChatInput from "./ChatInput";
 import Logout from "./Logout";
 import { v4 as uuidv4 } from "uuid";
 import axios from "axios";
 import { sendMessageRoute, recieveMessageRoute } from "../utils/APIRoutes";
-import { FixedSizeList as List } from "react-window";
+import { VariableSizeList as List } from "react-window";
+import AutoSizer from "react-virtualized-auto-sizer";
+import { prepare, layout } from '@chenglou/pretext';
+
+const FONT = '17.6px sans-serif';
+const LINE_HEIGHT = 24;
+const PADDING = 32;
 
 export default function ChatContainer({ currentChat, socket }) {
   const [messages, setMessages] = useState([]);
-  const listRef = useRef();
   const [arrivalMessage, setArrivalMessage] = useState(null);
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [containerHeight, setContainerHeight] = useState(0);
+  const listRef = useRef();
+  const containerRef = useRef();
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setContainerWidth(entry.contentRect.width);
+      setContainerHeight(entry.contentRect.height);
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  const getItemSize = useCallback((index) => {
+    const msg = messages[index];
+    if (!msg || containerWidth === 0) return PADDING;
+    const prepared = prepare(String(msg.message), FONT);
+    const { height } = layout(prepared, containerWidth * 0.4, LINE_HEIGHT);
+    return height + PADDING;
+  }, [messages, containerWidth]);
 
   useEffect(() => {
     const getMessages = async () => {
-      const data = await JSON.parse(
-        localStorage.getItem(process.env.REACT_APP_LOCALHOST_KEY)
-      );
+      const data = JSON.parse(localStorage.getItem(process.env.REACT_APP_LOCALHOST_KEY));
       const response = await axios.post(recieveMessageRoute, {
         from: data._id,
         to: currentChat._id,
@@ -27,66 +52,36 @@ export default function ChatContainer({ currentChat, socket }) {
   }, [currentChat]);
 
   useEffect(() => {
-    const getCurrentChat = async () => {
-      if (currentChat) {
-        await JSON.parse(
-          localStorage.getItem(process.env.REACT_APP_LOCALHOST_KEY)
-        )._id;
-      }
-    };
-    getCurrentChat();
-  }, [currentChat]);
-
-  const handleSendMsg = async (msg) => {
-    const data = await JSON.parse(
-      localStorage.getItem(process.env.REACT_APP_LOCALHOST_KEY)
-    );
-    socket.current.emit("send-msg", {
-      to: currentChat._id,
-      from: data._id,
-      msg,
-    });
-    await axios.post(sendMessageRoute, {
-      from: data._id,
-      to: currentChat._id,
-      message: msg,
-    });
-
-    const msgs = [...messages];
-    msgs.push({ fromSelf: true, message: msg });
-    setMessages(msgs);
-  };
-
-  useEffect(() => {
     if (socket.current) {
       socket.current.on("msg-recieve", (msg) => {
         setArrivalMessage({ fromSelf: false, message: msg });
       });
     }
-  }, []);
+  }, [socket]);
 
   useEffect(() => {
-    arrivalMessage && setMessages((prev) => [...prev, arrivalMessage]);
+    if (arrivalMessage) setMessages((prev) => [...prev, arrivalMessage]);
   }, [arrivalMessage]);
 
   useEffect(() => {
     if (messages.length > 0 && listRef.current) {
-      // listRef.current.scrollToRow({
-      //   index: messages.length - 1,
-      //   align: "end"
-      // });
+      listRef.current.scrollToItem(messages.length - 1, "end");
     }
   }, [messages]);
+
+  const handleSendMsg = async (msg) => {
+    const data = JSON.parse(localStorage.getItem(process.env.REACT_APP_LOCALHOST_KEY));
+    socket.current.emit("send-msg", { to: currentChat._id, from: data._id, msg });
+    await axios.post(sendMessageRoute, { from: data._id, to: currentChat._id, message: msg });
+    setMessages((prev) => [...prev, { fromSelf: true, message: msg }]);
+  };
 
   return (
     <Container>
       <div className="chat-header">
         <div className="user-details">
           <div className="avatar">
-            <img
-              src={`data:image/svg+xml;base64,${currentChat.avatarImage}`}
-              alt=""
-            />
+            <img src={`data:image/svg+xml;base64,${currentChat.avatarImage}`} alt="" />
           </div>
           <div className="username">
             <h3>{currentChat.username}</h3>
@@ -94,26 +89,26 @@ export default function ChatContainer({ currentChat, socket }) {
         </div>
         <Logout />
       </div>
-      <div className="chat-messages">
-        {messages.length > 0 ? (
+      <div className="chat-messages" ref={containerRef}>
+        {containerWidth > 0 && messages.length > 0 && (
           <List
             ref={listRef}
+            height={containerHeight}
+            width={containerWidth}
             itemCount={messages.length}
-            itemSize={90}
-            height={400}
-            width={'100%'}
+            itemSize={getItemSize}
+            itemData={messages}
           >
-            {({ index, style }) => (
-              <Message index={index} style={style} messages={messages} />
+            {({ index, style, data }) => (
+              <Message index={index} style={style} messages={data} />
             )}
           </List>
-        ) : (
-          <p style={{ color: "white" }}>Loading...</p>
         )}
       </div>
       <ChatInput handleSendMsg={handleSendMsg} />
     </Container>
   );
+
 }
 
 function Message({ index, style, messages }) {
@@ -164,6 +159,7 @@ const Container = styled.div`
     }
   }
   .chat-messages {
+    height: 100%;
     padding: 1rem 2rem;
     overflow: hidden;
     &::-webkit-scrollbar {
@@ -178,7 +174,7 @@ const Container = styled.div`
       display: flex;
       align-items: center;
       .content {
-        max-width: 40%;
+        max-width: 80%;
         overflow-wrap: break-word;
         padding: 1rem;
         font-size: 1.1rem;
