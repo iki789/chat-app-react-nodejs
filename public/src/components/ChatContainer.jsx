@@ -8,8 +8,8 @@ import { VariableSizeList as List } from "react-window";
 import { prepare, layout } from "@chenglou/pretext";
 
 const FONT = "400 17.6px sans-serif";
-const LINE_HEIGHT = 24;
-const PADDING = 32;
+const LINE_HEIGHT = 16;
+const PADDING = 24;
 
 export default function ChatContainer({ currentChat, socket }) {
   const [messages, setMessages] = useState([]);
@@ -182,7 +182,7 @@ const Container = styled.div`
         max-width: 50%;
         overflow-wrap: break-word;
         padding: 1rem;
-        font-size: 1.1rem;
+        font-size: 1rem;
         border-radius: 1rem;
         color: #d1d1d1;
         @media screen and (min-width: 920px) and (max-width: 1080px) {
