@@ -7,4 +7,16 @@ services:
   api:
     build: ./server
     ports:
-      - 5000:5000
+      - "5001:5001"
+    depends_on:
+      - db
+
+  db:
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+volumes:
+  mongo-data:

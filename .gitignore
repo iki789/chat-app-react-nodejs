@@ -1,2 +1,5 @@
 node_modules
-.env
+server/.env
+public/.env
+public/pnpm-lock.yaml
+server/pnpm-lock.yaml
