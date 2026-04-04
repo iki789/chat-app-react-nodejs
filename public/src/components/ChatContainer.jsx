@@ -179,14 +179,14 @@ const Container = styled.div`
       display: flex;
       align-items: center;
       .content {
-        max-width: 40%;
+        max-width: 50%;
         overflow-wrap: break-word;
         padding: 1rem;
         font-size: 1.1rem;
         border-radius: 1rem;
         color: #d1d1d1;
-        @media screen and (min-width: 720px) and (max-width: 1080px) {
-          max-width: 70%;
+        @media screen and (min-width: 920px) and (max-width: 1080px) {
+          max-width: 40%;
         }
       }
     }
