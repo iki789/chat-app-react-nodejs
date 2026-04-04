@@ -5,18 +5,13 @@ import Logout from "./Logout";
 import axios from "axios";
 import { sendMessageRoute, recieveMessageRoute } from "../utils/APIRoutes";
 import { VariableSizeList as List } from "react-window";
+import { prepare, layout } from "@chenglou/pretext";
 
-const FONT_CHARS_PER_LINE = 60;
-const LINE_HEIGHT = 24;
-const PADDING = 24;
-const FALLBACK_HEIGHT = LINE_HEIGHT + PADDING;
-
-function estimateHeight(message, containerWidth) {
-  if (!message || containerWidth === 0) return FALLBACK_HEIGHT;
-  const charsPerLine = Math.floor((containerWidth * 0.4) / 8); // ~8px per char estimate
-  const lines = Math.ceil(String(message.message).length / (charsPerLine || FONT_CHARS_PER_LINE));
-  return Math.max(1, lines) * LINE_HEIGHT + PADDING;
-}
+const FONT_SPEC = "16px 'Josefin Sans', sans-serif";
+const LINE_HEIGHT = 22; // Matches font-size: 1rem (16px) with typical leading
+const BUBBLE_PADDING_VERTICAL = 32; // 1rem top + 1rem bottom
+const BUBBLE_PADDING_HORIZONTAL = 32; // 1rem left + 1rem right
+const VERTICAL_GAP = 12; // Consistent gap between bubbles
 
 export default function ChatContainer({ currentChat, socket }) {
   const [messages, setMessages] = useState([]);
@@ -37,7 +32,6 @@ export default function ChatContainer({ currentChat, socket }) {
     return () => observer.disconnect();
   }, []);
 
-  // Fetch messages when chat changes
   useEffect(() => {
     const getMessages = async () => {
       const data = JSON.parse(localStorage.getItem(process.env.REACT_APP_LOCALHOST_KEY));
@@ -45,12 +39,15 @@ export default function ChatContainer({ currentChat, socket }) {
         from: data._id,
         to: currentChat._id,
       });
-      setMessages(response.data);
+      const preparedMessages = response.data.map((msg) => ({
+        ...msg,
+        handle: prepare(String(msg.message), FONT_SPEC),
+      }));
+      setMessages(preparedMessages);
     };
     getMessages();
   }, [currentChat]);
 
-  // Listen for incoming messages
   useEffect(() => {
     if (socket.current) {
       socket.current.on("msg-recieve", (msg) => {
@@ -60,10 +57,15 @@ export default function ChatContainer({ currentChat, socket }) {
   }, [socket]);
 
   useEffect(() => {
-    if (arrivalMessage) setMessages((prev) => [...prev, arrivalMessage]);
+    if (arrivalMessage) {
+      const prepared = {
+        ...arrivalMessage,
+        handle: prepare(String(arrivalMessage.message), FONT_SPEC),
+      };
+      setMessages((prev) => [...prev, prepared]);
+    }
   }, [arrivalMessage]);
 
-  // Scroll to latest message
   useEffect(() => {
     if (messages.length > 0 && listRef.current) {
       listRef.current.scrollToItem(messages.length - 1, "end");
@@ -71,7 +73,14 @@ export default function ChatContainer({ currentChat, socket }) {
   }, [messages]);
 
   const getItemSize = useCallback(
-    (index) => estimateHeight(messages[index], containerWidth),
+    (index) => {
+      const msg = messages[index];
+      if (!msg || containerWidth === 0) return 60;
+      
+      const maxWidth = containerWidth * 0.5 - BUBBLE_PADDING_HORIZONTAL;
+      const { height } = layout(msg.handle, maxWidth, LINE_HEIGHT);
+      return height + BUBBLE_PADDING_VERTICAL + VERTICAL_GAP;
+    },
     [messages, containerWidth]
   );
 
@@ -79,7 +88,12 @@ export default function ChatContainer({ currentChat, socket }) {
     const data = JSON.parse(localStorage.getItem(process.env.REACT_APP_LOCALHOST_KEY));
     socket.current.emit("send-msg", { to: currentChat._id, from: data._id, msg });
     await axios.post(sendMessageRoute, { from: data._id, to: currentChat._id, message: msg });
-    setMessages((prev) => [...prev, { fromSelf: true, message: msg }]);
+    const prepared = {
+      fromSelf: true,
+      message: msg,
+      handle: prepare(String(msg), FONT_SPEC),
+    };
+    setMessages((prev) => [...prev, prepared]);
   };
 
   return (
@@ -174,12 +188,13 @@ const Container = styled.div`
     }
     .message {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       .content {
         max-width: 50%;
         overflow-wrap: break-word;
         padding: 1rem;
         font-size: 1rem;
+        line-height: 22px;
         border-radius: 1rem;
         color: #d1d1d1;
         @media screen and (min-width: 920px) and (max-width: 1080px) {
