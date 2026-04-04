@@ -8,7 +8,7 @@ import { VariableSizeList as List } from "react-window";
 
 const FONT_CHARS_PER_LINE = 60;
 const LINE_HEIGHT = 24;
-const PADDING = 32;
+const PADDING = 24;
 const FALLBACK_HEIGHT = LINE_HEIGHT + PADDING;
 
 function estimateHeight(message, containerWidth) {
@@ -179,7 +179,7 @@ const Container = styled.div`
         max-width: 50%;
         overflow-wrap: break-word;
         padding: 1rem;
-        font-size: 1.1rem;
+        font-size: 1rem;
         border-radius: 1rem;
         color: #d1d1d1;
         @media screen and (min-width: 920px) and (max-width: 1080px) {
