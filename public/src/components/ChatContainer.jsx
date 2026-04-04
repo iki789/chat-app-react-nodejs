@@ -1,25 +1,23 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import styled from "styled-components";
 import ChatInput from "./ChatInput";
 import Logout from "./Logout";
-import { v4 as uuidv4 } from "uuid";
 import axios from "axios";
 import { sendMessageRoute, recieveMessageRoute } from "../utils/APIRoutes";
 import { VariableSizeList as List } from "react-window";
-import AutoSizer from "react-virtualized-auto-sizer";
-import { prepare, layout } from '@chenglou/pretext';
+import { prepare, layout } from "@chenglou/pretext";
 
-const FONT = '17.6px sans-serif';
+const FONT = "400 17.6px sans-serif";
 const LINE_HEIGHT = 24;
 const PADDING = 32;
 
 export default function ChatContainer({ currentChat, socket }) {
   const [messages, setMessages] = useState([]);
-  const listRef = useRef();
-  const containerRef = useRef();
   const [arrivalMessage, setArrivalMessage] = useState(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [containerHeight, setContainerHeight] = useState(0);
+  const listRef = useRef();
+  const containerRef = useRef();
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -31,19 +29,9 @@ export default function ChatContainer({ currentChat, socket }) {
     return () => observer.disconnect();
   }, []);
 
-  const getItemSize = useCallback((index) => {
-    const msg = messages[index];
-    if (!msg || containerWidth === 0) return PADDING;
-    const prepared = prepare(String(msg.message), FONT);
-    const { height } = layout(prepared, containerWidth * 0.4, LINE_HEIGHT);
-    return height + PADDING;
-  }, [messages, containerWidth]);
-
   useEffect(() => {
     const getMessages = async () => {
-      const data = await JSON.parse(
-        localStorage.getItem(process.env.REACT_APP_LOCALHOST_KEY)
-      );
+      const data = JSON.parse(localStorage.getItem(process.env.REACT_APP_LOCALHOST_KEY));
       const response = await axios.post(recieveMessageRoute, {
         from: data._id,
         to: currentChat._id,
@@ -54,66 +42,55 @@ export default function ChatContainer({ currentChat, socket }) {
   }, [currentChat]);
 
   useEffect(() => {
-    const getCurrentChat = async () => {
-      if (currentChat) {
-        await JSON.parse(
-          localStorage.getItem(process.env.REACT_APP_LOCALHOST_KEY)
-        )._id;
-      }
-    };
-    getCurrentChat();
-  }, [currentChat]);
-
-  const handleSendMsg = async (msg) => {
-    const data = await JSON.parse(
-      localStorage.getItem(process.env.REACT_APP_LOCALHOST_KEY)
-    );
-    socket.current.emit("send-msg", {
-      to: currentChat._id,
-      from: data._id,
-      msg,
-    });
-    await axios.post(sendMessageRoute, {
-      from: data._id,
-      to: currentChat._id,
-      message: msg,
-    });
-
-    const msgs = [...messages];
-    msgs.push({ fromSelf: true, message: msg });
-    setMessages(msgs);
-  };
-
-  useEffect(() => {
     if (socket.current) {
       socket.current.on("msg-recieve", (msg) => {
         setArrivalMessage({ fromSelf: false, message: msg });
       });
     }
-  }, []);
+  }, [socket]);
 
   useEffect(() => {
-    arrivalMessage && setMessages((prev) => [...prev, arrivalMessage]);
+    if (arrivalMessage) setMessages((prev) => [...prev, arrivalMessage]);
   }, [arrivalMessage]);
 
+  // Scroll to latest message
   useEffect(() => {
     if (messages.length > 0 && listRef.current) {
-      // listRef.current.scrollToRow({
-      //   index: messages.length - 1,
-      //   align: "end"
-      // });
+      listRef.current.scrollToItem(messages.length - 1, "end");
     }
   }, [messages]);
+
+  const preparedMessages = useMemo(
+    () => messages.map((msg) => ({
+      ...msg,
+      prepared: prepare(String(msg.message), FONT),
+    })),
+    [messages]
+  );
+
+  const getItemSize = useCallback(
+    (index) => {
+      const msg = preparedMessages[index];
+      if (!msg || containerWidth === 0) return PADDING;
+      const { height } = layout(msg.prepared, containerWidth * 0.4, LINE_HEIGHT);
+      return height + PADDING;
+    },
+    [preparedMessages, containerWidth]
+  );
+
+  const handleSendMsg = async (msg) => {
+    const data = JSON.parse(localStorage.getItem(process.env.REACT_APP_LOCALHOST_KEY));
+    socket.current.emit("send-msg", { to: currentChat._id, from: data._id, msg });
+    await axios.post(sendMessageRoute, { from: data._id, to: currentChat._id, message: msg });
+    setMessages((prev) => [...prev, { fromSelf: true, message: msg }]);
+  };
 
   return (
     <Container>
       <div className="chat-header">
         <div className="user-details">
           <div className="avatar">
-            <img
-              src={`data:image/svg+xml;base64,${currentChat.avatarImage}`}
-              alt=""
-            />
+            <img src={`data:image/svg+xml;base64,${currentChat.avatarImage}`} alt="" />
           </div>
           <div className="username">
             <h3>{currentChat.username}</h3>
@@ -122,26 +99,19 @@ export default function ChatContainer({ currentChat, socket }) {
         <Logout />
       </div>
       <div className="chat-messages" ref={containerRef}>
-        {containerWidth > 0 && messages.length > 0 ? (
-          <AutoSizer>
-            {({ height, width }) => (
-              <List
-                ref={listRef}
-                height={containerHeight}
-                width={containerWidth}
-                itemCount={messages.length}
-                itemSize={getItemSize}
-                itemData={messages}
-                overscanCount={5}
-              >
-                {({ index, style, data }) => (
-                  <Message index={index} style={style} messages={data} />
-                )}
-              </List>
+        {containerWidth > 0 && preparedMessages.length > 0 && (
+          <List
+            ref={listRef}
+            height={containerHeight}
+            width={containerWidth}
+            itemCount={preparedMessages.length}
+            itemSize={getItemSize}
+            itemData={preparedMessages}
+          >
+            {({ index, style, data }) => (
+              <Message index={index} style={style} messages={data} />
             )}
-          </AutoSizer>
-        ) : (
-          <p style={{ color: "white" }}>Loading...</p>
+          </List>
         )}
       </div>
       <ChatInput handleSendMsg={handleSendMsg} />
@@ -154,11 +124,8 @@ function Message({ index, style, messages }) {
   if (!message) return null;
   return (
     <div style={style}>
-      <div
-        className={`message ${message.fromSelf ? "sended" : "recieved"
-          }`}
-      >
-        <div className="content ">
+      <div className={`message ${message.fromSelf ? "sended" : "recieved"}`}>
+        <div className="content">
           <p>{String(message.message)}</p>
         </div>
       </div>
@@ -197,9 +164,9 @@ const Container = styled.div`
     }
   }
   .chat-messages {
-    height: 100%;
     padding: 1rem 2rem;
     overflow: hidden;
+    height: 100%;
     &::-webkit-scrollbar {
       width: 0.2rem;
       &-thumb {
@@ -212,7 +179,7 @@ const Container = styled.div`
       display: flex;
       align-items: center;
       .content {
-        max-width: 80%;
+        max-width: 40%;
         overflow-wrap: break-word;
         padding: 1rem;
         font-size: 1.1rem;
