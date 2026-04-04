@@ -1,5 +1,6 @@
 {
 	"dependencies": {
-		"@chenglou/pretext": "^0.0.4"
+		"@chenglou/pretext": "^0.0.4",
+		"react-window": "^2.2.7"
 	}
 }
