@@ -7,8 +7,8 @@ import { sendMessageRoute, recieveMessageRoute } from "../utils/APIRoutes";
 import { VariableSizeList as List } from "react-window";
 import { prepare, layout } from "@chenglou/pretext";
 
-const FONT = "400 17.6px sans-serif";
-const LINE_HEIGHT = 16;
+const FONT = "400 16px sans-serif";
+const LINE_HEIGHT = 20;
 const PADDING = 24;
 
 export default function ChatContainer({ currentChat, socket }) {
