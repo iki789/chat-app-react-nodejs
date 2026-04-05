@@ -7,9 +7,10 @@ import { sendMessageRoute, recieveMessageRoute } from "../utils/APIRoutes";
 import { VariableSizeList as List } from "react-window";
 import { prepare, layout } from "@chenglou/pretext";
 
-const FONT = "400 16px sans-serif";
+const FONT = "400 16px Inter, sans-serif";
 const LINE_HEIGHT = 20;
-const PADDING = 24;
+const PADDING = 32 + 16;
+const BUBBLE_MAX_WIDTH_RATIO = 0.5;
 
 export default function ChatContainer({ currentChat, socket }) {
   const [messages, setMessages] = useState([]);
@@ -18,6 +19,7 @@ export default function ChatContainer({ currentChat, socket }) {
   const [containerHeight, setContainerHeight] = useState(0);
   const listRef = useRef();
   const containerRef = useRef();
+  const prepareCache = useRef(new Map());
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -53,26 +55,28 @@ export default function ChatContainer({ currentChat, socket }) {
     if (arrivalMessage) setMessages((prev) => [...prev, arrivalMessage]);
   }, [arrivalMessage]);
 
-  // Scroll to latest message
   useEffect(() => {
-    if (messages.length > 0 && listRef.current) {
+    if (listRef.current && messages.length > 0) {
+      listRef.current.resetAfterIndex(messages.length - 1);
       listRef.current.scrollToItem(messages.length - 1, "end");
     }
-  }, [messages]);
+  }, [messages.length]);
 
-  const preparedMessages = useMemo(
-    () => messages.map((msg) => ({
-      ...msg,
-      prepared: prepare(String(msg.message), FONT),
-    })),
-    [messages]
-  );
+  const preparedMessages = useMemo(() => {
+    return messages.map((msg, i) => {
+      const key = msg._id ?? i;
+      if (!prepareCache.current.has(key)) {
+        prepareCache.current.set(key, prepare(String(msg.message), FONT));
+      }
+      return { ...msg, prepared: prepareCache.current.get(key) };
+    });
+  }, [messages]);
 
   const getItemSize = useCallback(
     (index) => {
       const msg = preparedMessages[index];
       if (!msg || containerWidth === 0) return PADDING;
-      const { height } = layout(msg.prepared, containerWidth * 0.4, LINE_HEIGHT);
+      const { height } = layout(msg.prepared, containerWidth * BUBBLE_MAX_WIDTH_RATIO, LINE_HEIGHT);
       return height + PADDING;
     },
     [preparedMessages, containerWidth]
@@ -107,6 +111,7 @@ export default function ChatContainer({ currentChat, socket }) {
             itemCount={preparedMessages.length}
             itemSize={getItemSize}
             itemData={preparedMessages}
+            itemKey={(index, data) => data[index]._id ?? index}
           >
             {({ index, style, data }) => (
               <Message index={index} style={style} messages={data} />
