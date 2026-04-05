@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import styled from "styled-components";
 import ChatInput from "./ChatInput";
 import Logout from "./Logout";
 import axios from "axios";
 import { sendMessageRoute, recieveMessageRoute } from "../utils/APIRoutes";
-import { VariableSizeList as List } from "react-window";
+import { List, AutoSizer, CellMeasurer, CellMeasurerCache } from "react-virtualized";
 
 const LINE_HEIGHT = 22;
 const BUBBLE_PADDING_VERTICAL = 32; // 1rem top + 1rem bottom
@@ -20,21 +20,14 @@ function estimateHeight(message, containerWidth) {
 export default function ChatContainer({ currentChat, socket }) {
   const [messages, setMessages] = useState([]);
   const [arrivalMessage, setArrivalMessage] = useState(null);
-  const [containerWidth, setContainerWidth] = useState(0);
-  const [containerHeight, setContainerHeight] = useState(0);
   const listRef = useRef();
-  const containerRef = useRef();
 
-  // Measure container dimensions
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const observer = new ResizeObserver(([entry]) => {
-      setContainerWidth(entry.contentRect.width);
-      setContainerHeight(entry.contentRect.height);
-    });
-    observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, []);
+  const cache = useRef(
+    new CellMeasurerCache({
+      fixedWidth: true,   // width is fixed per container, only height varies
+      defaultHeight: 60,
+    })
+  );
 
   useEffect(() => {
     const getMessages = async () => {
@@ -58,18 +51,40 @@ export default function ChatContainer({ currentChat, socket }) {
 
   useEffect(() => {
     if (arrivalMessage) setMessages((prev) => [...prev, arrivalMessage]);
+    listRef.current.scrollToRow(messages.length - 1)
   }, [arrivalMessage]);
 
   useEffect(() => {
     if (messages.length > 0 && listRef.current) {
-      listRef.current.scrollToItem(messages.length - 1, "end");
+      // Clear cache for new message so it gets measured fresh
+      cache.current.clear(messages.length - 1, 0);
+      listRef.current.recomputeRowHeights(messages.length - 1);
+      listRef.current.scrollToRow(messages.length - 1);
     }
-  }, [messages]);
+  }, [messages.length]);
 
-  const getItemSize = useCallback(
-    (index) => estimateHeight(messages[index]?.message, containerWidth),
-    [messages, containerWidth]
-  );
+  const rowRenderer = ({ index, key, parent, style }) => {
+    const msg = messages[index];
+    return (
+      <CellMeasurer
+        key={key}
+        cache={cache.current}
+        parent={parent}
+        columnIndex={0}
+        rowIndex={index}
+      >
+        {({ measure, registerChild }) => (
+          <div ref={registerChild} style={style}>
+            <div className={`message ${msg.fromSelf ? "sended" : "recieved"}`}>
+              <div className="content" onLoad={measure}>
+                <p>{String(msg.message)}</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </CellMeasurer>
+    );
+  };
 
   const handleSendMsg = async (msg) => {
     const data = JSON.parse(localStorage.getItem(process.env.REACT_APP_LOCALHOST_KEY));
@@ -91,21 +106,20 @@ export default function ChatContainer({ currentChat, socket }) {
         </div>
         <Logout />
       </div>
-      <div className="chat-messages" ref={containerRef}>
-        {containerWidth > 0 && messages.length > 0 && (
-          <List
-            ref={listRef}
-            height={containerHeight}
-            width={containerWidth}
-            itemCount={messages.length}
-            itemSize={getItemSize}
-            itemData={messages}
-          >
-            {({ index, style, data }) => (
-              <Message index={index} style={style} messages={data} />
-            )}
-          </List>
-        )}
+      <div className="chat-messages">
+        <AutoSizer>
+          {({ width, height }) => (
+            <List
+              ref={listRef}
+              width={width}
+              height={height}
+              rowCount={messages.length}
+              rowHeight={cache.current.rowHeight}
+              rowRenderer={rowRenderer}
+              deferredMeasurementCache={cache.current}
+            />
+          )}
+        </AutoSizer>
       </div>
       <ChatInput handleSendMsg={handleSendMsg} />
     </Container>
@@ -171,6 +185,7 @@ const Container = styled.div`
     .message {
       display: flex;
       align-items: flex-start;
+      margin-bottom: 0.5rem;
       .content {
         max-width: 50%;
         overflow-wrap: break-word;
